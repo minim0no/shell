@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <sys/types.h> 
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -8,33 +8,41 @@
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1
 
-int main(int argc, char **argv) {
-    // Load config files
-
-    // command loop
-    lsh_loop();
-
-    // Terminate
-    return EXIT_SUCCESS;
-}
-
-void lsh_loop() {
-    char *line;
-    char **args;
-    int status;
-
-    do {
-        printf("> ");
-        line = lsh_read_line();
-        args = lsh_split_line(line);
-        status = lsh_execute(args);
-
-        free(line);
-        free(args);
-    } while (status);
-}
-
 #define LSH_RL_BUFSIZE 1024
+#define LSH_TOK_BUFSIZE 64
+#define LSH_TOK_DELIM " \t\r\n\a"
+
+/*
+    Function Declarations
+*/
+char *lsh_read_line();
+char **lsh_split_line(char *line);
+int lsh_launch(char **args);
+int lsh_cd(char **args);
+int lsh_help(char **args);
+int lsh_exit(char **args);
+int lsh_num_builtins();
+int lsh_execute(char **args);
+void lsh_loop();
+
+/*
+    Global Variables
+*/
+char *builtin_str[] = {
+    "cd",
+    "help",
+    "exit"
+};
+
+int (*builtin_func[])(char **) = {
+    &lsh_cd,
+    &lsh_help,
+    &lsh_exit
+};
+
+/*
+    Function Implementations
+*/
 char *lsh_read_line() {
     int bufsize = LSH_RL_BUFSIZE;
     int position = 0;
@@ -57,7 +65,6 @@ char *lsh_read_line() {
         }
         position++;
 
-
         // if buffer exceeded, reallocate
         if (position >= bufsize) {
             bufsize += LSH_RL_BUFSIZE;
@@ -71,17 +78,15 @@ char *lsh_read_line() {
     }
 }
 
-#define LSH_TOK_BUFSIZE 64
-#define LSH_TOK_DELIM " \t\r\n\a"
 char **lsh_split_line(char *line) {
     int bufsize = LSH_TOK_BUFSIZE, position = 0;
-    char** tokens = (sizeof(char*) * bufsize);
-    char* token;
+    char **tokens = malloc(sizeof(char *) * bufsize);
+    char *token;
 
     if (!tokens) {
         fprintf(stderr, "lsh: allocation error\n");
+        exit(EXIT_FAILURE);
     }
-
 
     token = strtok(line, LSH_TOK_DELIM);
     while (token != NULL) {
@@ -90,7 +95,7 @@ char **lsh_split_line(char *line) {
 
         if (position >= bufsize) {
             bufsize += LSH_TOK_BUFSIZE;
-            tokens = realloc(tokens, bufsize);
+            tokens = realloc(tokens, bufsize * sizeof(char *));
 
             if (!tokens) {
                 fprintf(stderr, "lsh: allocation error\n");
@@ -98,8 +103,8 @@ char **lsh_split_line(char *line) {
             }
         }
 
-        token = strtok(line, LSH_TOK_DELIM);
-    }   
+        token = strtok(NULL, LSH_TOK_DELIM);
+    }
     tokens[position] = NULL;
 
     return tokens;
@@ -108,7 +113,6 @@ char **lsh_split_line(char *line) {
 int lsh_launch(char **args) {
     pid_t pid, wpid;
     int status;
-
 
     pid = fork();
     if (pid < 0) {
@@ -120,42 +124,13 @@ int lsh_launch(char **args) {
         exit(EXIT_FAILURE);
     } else {
         do {
-        wpid = waitpid(pid, &status, WUNTRACED);
+            wpid = waitpid(pid, &status, WUNTRACED);
         } while (!WIFEXITED(status) && !WIFSIGNALED(status));
     }
 
     return 1;
 }
 
-/*
-    Function Declarations for shell commands:
-*/
-int lsh_cd(char **args);
-int lsh_help(char **args);
-int lsh_exit(char **args);
-
-/*
-    List for commands and their functions:
-*/
-char *builtin_str[] = {
-    "cd", 
-    "help", 
-    "exit"
-};
-
-int (*builtin_func[]) (char**) = {
-    &lsh_cd, 
-    &lsh_help, 
-    &lsh_exit
-};
-
-int lsh_num_builtins() {
-    return sizeof(builtin_str) / sizeof(char *);
-}
-
-/*
-    function implementations:
-*/
 int lsh_cd(char **args) {
     if (args[1] == NULL) {
         fprintf(stderr, "lsh: expected argument to \"cd\"\n");
@@ -185,6 +160,10 @@ int lsh_exit(char **args) {
     return 0;
 }
 
+int lsh_num_builtins() {
+    return sizeof(builtin_str) / sizeof(char *);
+}
+
 int lsh_execute(char **args) {
     if (args[0] == NULL) {
         return 1;
@@ -197,4 +176,30 @@ int lsh_execute(char **args) {
     }
 
     return lsh_launch(args);
+}
+
+void lsh_loop() {
+    char *line;
+    char **args;
+    int status;
+
+    do {
+        printf("> ");
+        line = lsh_read_line();
+        args = lsh_split_line(line);
+        status = lsh_execute(args);
+
+        free(line);
+        free(args);
+    } while (status);
+}
+
+int main(int argc, char **argv) {
+    // Load config files
+
+    // command loop
+    lsh_loop();
+
+    // Terminate
+    return EXIT_SUCCESS;
 }
